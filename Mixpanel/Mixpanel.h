@@ -246,6 +246,8 @@
  */
 - (void)registerSuperProperties:(NSDictionary *)properties;
 
+- (void)removeSuperProperty:(NSString *)key;
+
 /*!
  @method
  

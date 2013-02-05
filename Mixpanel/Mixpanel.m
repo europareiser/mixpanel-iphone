@@ -455,6 +455,12 @@ static Mixpanel *sharedInstance = nil;
     }
 }
 
+- (void)removeSuperProperty:(NSString *)key {
+  @synchronized(self) {
+    [self.superProperties removeObjectForKey:key];
+  }
+}
+
 - (void)registerSuperPropertiesOnce:(NSDictionary *)properties
 {
     [Mixpanel assertPropertyTypes:properties];
