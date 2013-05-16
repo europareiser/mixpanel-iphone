@@ -289,7 +289,7 @@ static Mixpanel *sharedInstance = nil;
             } else {
                 stringKey = [NSString stringWithString:key];
             }
-            id v = [Mixpanel JSONSerializableObjectForObject:[obj objectForKey:key]];
+            id v = [Mixpanel JSONSerializableObjectForObject:[(NSDictionary *)obj objectForKey:key]];
             [d setObject:v forKey:stringKey];
         }
         return [NSDictionary dictionaryWithDictionary:d];
