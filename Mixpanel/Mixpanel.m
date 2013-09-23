@@ -329,7 +329,7 @@ static Mixpanel *sharedInstance = nil;
             } else {
                 stringKey = [NSString stringWithString:key];
             }
-            id v = [self JSONSerializableObjectForObject:[obj objectForKey:key]];
+            id v = [self JSONSerializableObjectForObject:[(NSDictionary *)obj objectForKey:key]];
             [d setObject:v forKey:stringKey];
         }
         return [NSDictionary dictionaryWithDictionary:d];
@@ -704,7 +704,7 @@ static Mixpanel *sharedInstance = nil;
 -(void)importData:(NSArray *)imports
 {
   for (id import in imports) {
-    NSString *data = [Mixpanel encodeAPIData:import];
+    NSString *data = [self encodeAPIData:import];
     NSString *postBody = [NSString stringWithFormat:@"data=%@&api_key=%@", data, self.apiKey];
 
     NSURL *url = [NSURL URLWithString:[self.serverURL stringByAppendingString:@"/import/"]];
