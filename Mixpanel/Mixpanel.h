@@ -63,6 +63,8 @@
  */
 @property(atomic,readonly,retain) MixpanelPeople *people;
 
+@property(atomic,copy) NSString *apiKey;
+
 /*!
  @property
  

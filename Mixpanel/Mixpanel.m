@@ -47,6 +47,8 @@
 #define MixpanelDebug(...)
 #endif
 
+#define MIXPANEL_ACCEPTED_MAX_TIME_INTERVAL 432000.0
+
 @interface Mixpanel () {
     NSUInteger _flushInterval;
 }
@@ -71,6 +73,8 @@
 @property(nonatomic,assign) dispatch_queue_t serialQueue;
 @property(nonatomic,assign) SCNetworkReachabilityRef reachability;
 @property(nonatomic,retain) NSDateFormatter *dateFormatter;
+
+@property(nonatomic,retain) NSOperationQueue *importQueue;
 
 @end
 
@@ -158,6 +162,10 @@ static Mixpanel *sharedInstance = nil;
         if (!reachabilityOk) {
             NSLog(@"%@ failed to set up reachability callback: %s", self, SCErrorString(SCError()));
         }
+
+        self.importQueue = [[[NSOperationQueue alloc] init] autorelease];
+        [self.importQueue setMaxConcurrentOperationCount:1];
+
         self.dateFormatter = [[[NSDateFormatter alloc] init] autorelease];
         [self.dateFormatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"];
         [self.dateFormatter setTimeZone:[NSTimeZone timeZoneWithAbbreviation:@"UTC"]];
@@ -218,6 +226,11 @@ static Mixpanel *sharedInstance = nil;
         dispatch_release(self.serialQueue);
         self.serialQueue = nil;
     }
+
+    self.apiKey = nil;
+    [self.importQueue cancelAllOperations];
+    self.importQueue = nil;
+
     [super dealloc];
 }
 
@@ -333,7 +346,7 @@ static Mixpanel *sharedInstance = nil;
     return s;
 }
 
-- (NSString *)encodeAPIData:(NSArray *)array
+- (NSString *)encodeAPIData:(id)array
 {
     NSString *b64String = @"";
     NSData *data = [self JSONSerializeObject:array];
@@ -616,6 +629,19 @@ static Mixpanel *sharedInstance = nil;
     } else {
         self.eventsBatch = [NSArray arrayWithArray:self.eventsQueue];
     }
+
+    // use /import/ endpoint for old data
+    NSMutableArray *imports = [NSMutableArray array];
+    for (NSDictionary *event in self.eventsBatch) {
+      NSNumber *timestamp = [(NSDictionary *)[event objectForKey:@"properties"] objectForKey:@"time"];
+      if (timestamp) {
+        NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:[NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue]]];
+        if (age > MIXPANEL_ACCEPTED_MAX_TIME_INTERVAL) {
+          [imports addObject:event];
+        }
+      }
+    }
+
     NSString *data = [self encodeAPIData:self.eventsBatch];
     NSString *postBody = [NSString stringWithFormat:@"ip=1&data=%@", data];
     MixpanelDebug(@"%@ flushing %lu of %lu queued events: %@", self, (unsigned long)[self.eventsBatch count], (unsigned long)[self.eventsQueue count], self.eventsQueue);
@@ -623,6 +649,12 @@ static Mixpanel *sharedInstance = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.eventsConnection start];
     });
+
+    // can only use import endpoint if apiKey is set
+    if(self.apiKey) {
+        [self importData:imports];
+    }
+
     [self updateNetworkActivityIndicator];
 }
 
@@ -639,6 +671,19 @@ static Mixpanel *sharedInstance = nil;
     } else {
         self.peopleBatch = [NSArray arrayWithArray:self.peopleQueue];
     }
+
+    // use /import/ endpoint for old data
+    NSMutableArray *imports = [NSMutableArray array];
+    for (NSDictionary *people in self.peopleBatch) {
+      NSNumber *timestamp = [people objectForKey:@"$time"];
+      if(timestamp) {
+        NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:[NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue]/1000.0]];
+        if (age > MIXPANEL_ACCEPTED_MAX_TIME_INTERVAL) {
+          [imports addObject:people];
+        }
+      }
+    }
+
     NSString *data = [self encodeAPIData:self.peopleBatch];
     NSString *postBody = [NSString stringWithFormat:@"data=%@", data];
     MixpanelDebug(@"%@ flushing %lu of %lu queued people: %@", self, (unsigned long)[self.peopleBatch count], (unsigned long)[self.peopleQueue count], self.peopleQueue);
@@ -646,7 +691,37 @@ static Mixpanel *sharedInstance = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.peopleConnection start];
     });
+
+    // can only use import endpoint if apiKey is set
+    if(self.apiKey) {
+      [self importData:imports];
+    }
+
     [self updateNetworkActivityIndicator];
+}
+
+// use /import/ endpoint for aged data
+-(void)importData:(NSArray *)imports
+{
+  for (id import in imports) {
+    NSString *data = [Mixpanel encodeAPIData:import];
+    NSString *postBody = [NSString stringWithFormat:@"data=%@&api_key=%@", data, self.apiKey];
+
+    NSURL *url = [NSURL URLWithString:[self.serverURL stringByAppendingString:@"/import/"]];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
+    [request setHTTPMethod:@"POST"];
+    [request setHTTPBody:[postBody dataUsingEncoding:NSUTF8StringEncoding]];
+    DLog(@"%@ http request: %@?%@", self, [self.serverURL stringByAppendingString:@"/import/"], postBody);
+
+    [NSURLConnection sendAsynchronousRequest:request
+                                       queue:self.importQueue
+                           completionHandler:^(NSURLResponse *response, NSData *responseData, NSError *error){
+                             NSString *responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+                             DLog(@"response %@, error = %@", responseString, error);
+                             [responseString release];
+                           }];
+  }
 }
 
 - (void)cancelFlush
