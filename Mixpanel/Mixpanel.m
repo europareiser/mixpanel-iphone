@@ -896,7 +896,10 @@ static Mixpanel *sharedInstance = nil;
     if (properties) {
         self.distinctId = [properties objectForKey:@"distinctId"];
         self.nameTag = [properties objectForKey:@"nameTag"];
-        self.superProperties = [properties objectForKey:@"superProperties"];
+        NSDictionary *superProperties = [properties objectForKey:@"superProperties"];
+        if (superProperties) {
+          self.superProperties = [NSMutableDictionary dictionaryWithDictionary:superProperties];
+        }
         self.people.distinctId = [properties objectForKey:@"peopleDistinctId"];
         self.people.unidentifiedQueue = [properties objectForKey:@"peopleUnidentifiedQueue"];
     }
