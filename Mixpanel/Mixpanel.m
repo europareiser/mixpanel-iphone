@@ -22,7 +22,6 @@
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 
-#import <AdSupport/ASIdentifierManager.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <CoreTelephony/CTCarrier.h>
 #import <CoreTelephony/CTTelephonyNetworkInfo.h>
@@ -31,7 +30,6 @@
 #import "MPCJSONDataSerializer.h"
 #import "Mixpanel.h"
 #import "NSData+MPBase64.h"
-#import "ODIN.h"
 
 #define VERSION @"2.0.1"
 
@@ -272,9 +270,6 @@ static Mixpanel *sharedInstance = nil;
     if (carrier.carrierName.length) {
         [p setValue:carrier.carrierName forKey:@"$carrier"];
     }
-    if (NSClassFromString(@"ASIdentifierManager")) {
-        [p setValue:[[ASIdentifierManager sharedManager].advertisingIdentifier UUIDString] forKey:@"$ios_ifa"];
-    }
     return p;
 }
 
@@ -407,17 +402,19 @@ static Mixpanel *sharedInstance = nil;
 
 - (NSString *)defaultDistinctId
 {
-    NSString *distinctId = nil;
-    if (NSClassFromString(@"ASIdentifierManager")) {
-        distinctId = [[ASIdentifierManager sharedManager].advertisingIdentifier UUIDString];
-    }
-    if (!distinctId) {
-        distinctId = ODIN1();
-    }
-    if (!distinctId) {
-        NSLog(@"%@ error getting default distinct id: both iOS IFA and ODIN1 failed", self);
-    }
-    return distinctId;
+  NSString *distinctId = nil;
+
+  if (!distinctId && NSClassFromString(@"UIDevice")) {
+    distinctId = [[UIDevice currentDevice].identifierForVendor UUIDString];
+  }
+  if (!distinctId) {
+    NSLog(@"%@ error getting device identifier: falling back to uuid", self);
+    distinctId = [[NSUUID UUID] UUIDString];
+  }
+  if (!distinctId) {
+    NSLog(@"%@ error getting uuid: no default distinct id could be generated", self);
+  }
+  return distinctId;
 }
 
 - (void)track:(NSString *)event
@@ -1063,9 +1060,6 @@ static Mixpanel *sharedInstance = nil;
     [p setValue:[device systemVersion] forKey:@"$ios_version"];
     [p setValue:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleVersion"] forKey:@"$ios_app_version"];
     [p setValue:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"] forKey:@"$ios_app_release"];
-    if (NSClassFromString(@"ASIdentifierManager")) {
-        [p setValue:[[ASIdentifierManager sharedManager].advertisingIdentifier UUIDString] forKey:@"$ios_ifa"];
-    }
     return [NSDictionary dictionaryWithDictionary:p];
 }
 
