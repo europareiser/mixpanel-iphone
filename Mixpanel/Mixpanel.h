@@ -405,7 +405,7 @@
  </pre>
  
  Please note that the core <code>Mixpanel</code> and
- <code>MixpanelPeople</code> classes have separate <code>identify:<code>
+ <code>MixpanelPeople</code> classes have separate <code>identify:</code>
  methods. The <code>Mixpanel</code> <code>identify:</code> affects the
  <code>distinct_id</code> property of events sent by <code>track:</code> and
  <code>track:properties:</code>. The <code>MixpanelPeople</code>
